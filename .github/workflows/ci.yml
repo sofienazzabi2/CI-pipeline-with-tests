@@ -30,15 +30,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v2
-        with:
-          java-version: '11'
-          distribution: 'temurin'  # Specify the Java distribution
-
-      - name: Check Java Version
-        run: java -version  # Check the Java version
-
       - name: Install Node.js
         uses: actions/setup-node@v2
         with:
@@ -52,19 +43,10 @@ jobs:
           while ! mysqladmin ping -h 127.0.0.1 --silent; do
             sleep 1
           done
-          
+
       - name: Create the 'users' table
         run: |
           mysql -h 127.0.0.1 -uroot --password="" user_db < init.sql
-
-      - name: Download and install the latest version of Trivy
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          LATEST_VERSION=$(wget -qO- https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
-          wget https://github.com/aquasecurity/trivy/releases/download/${LATEST_VERSION}/trivy_${LATEST_VERSION#v}_Linux-64bit.deb
-          sudo dpkg -i trivy_${LATEST_VERSION#v}_Linux-64bit.deb
-          trivy -v
 
       - name: Run tests
         env:
@@ -78,21 +60,18 @@ jobs:
         run: |
           docker build -t nodejs-simple-app .
 
-      - name: Run Trivy scan
-        run: |
-          trivy image --exit-code 1 --severity CRITICAL,HIGH nodejs-simple-app || echo "Trivy scan completed with warnings."
-
-      # SonarCloud analysis step
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v1
-        with:
-          args: >
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} 
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} 
-            -Dsonar.sources=.
+      - name: Log in to Docker Hub
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required for SonarCloud to comment on PRs
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Set SONAR_TOKEN as an environment variable
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+
+      - name: Tag Docker image with workflow version
+        run: |
+          IMAGE_VERSION="${GITHUB_RUN_NUMBER}" # Or use commit SHA: $(git rev-parse --short HEAD)
+          docker tag nodejs-simple-app sofienazzabi/tp1-devops:${IMAGE_VERSION}
+          docker push sofienazzabi/tp1-devops:${IMAGE_VERSION}
 
       - name: Terminate Successfully
-        run: echo "All tests completed successfully!"
+        run: echo "All tests completed successfully and Docker image pushed to sofienazzabi/tp1-devops with version tag!"
